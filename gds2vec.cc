@@ -15,13 +15,14 @@ static std::vector<const char *> kColors = {
 
 static int usage(const char *progname) {
   fprintf(stderr, "Usage: %s [options] command <gdsfile>\n"
-          "Command is one of\n"
+          "[Command]\n"
           "\tps      : output postscript\n"
-          "\tlayers  : print layers\n"
+          "\tlayers  : show available layers\n"
           "\tdesc    : print description of content\n"
-          "Options\n"
-          " -h         : help\n"
-          " -l <layer> : choose a specific layer\n",
+          "[Options]\n"
+          "\t-h         : help\n"
+          "\t-l <layer> : choose a specific layer\n"
+          "\t-o <file>  : output filename (otherwise: stdout)\n",
           progname);
   return 1;
 }

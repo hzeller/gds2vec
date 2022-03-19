@@ -1,0 +1,4 @@
+gds2vec
+*.o
+*.rawstring
+

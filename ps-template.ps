@@ -22,7 +22,7 @@
     0.001 mm display-scale mul dup scale
     translate   % Offset from the bounding box
     /Helvetica findfont font-size-micron scalefont setfont
-    0.01 setlinewidth
+    0.001 setlinewidth
 } def
 
 % <x> <y> <width> <height> show-bounding-box
@@ -39,11 +39,15 @@
     grestore
 } def
 
-% <x> <y> <text> center-text
+% <x> <y> <angle> <text> center-text
 /center-text {
-    3 1 roll
-    moveto
+    4 2 roll
+    gsave
+    translate
+    0 0 moveto
     dup stringwidth pop
     2 div neg font-size-micron 2 div neg rmoveto
+    exch rotate
     show
+    grestore
 } def

@@ -10,5 +10,9 @@ gds2vec.o : ps-template.ps.rawstring
 	cat $^ >> $@
 	echo ')";' >> $@
 
+# Useful target to create DXF files for laser cutting
+%-1.dxf : %.ps
+	pstoedit -psarg "-r600x600" -nb -f "dxf_s:-mm -ctl" $^ $*-%PAGENUMBER%.dxf
+
 clean:
 	rm -rf *.rawstring *.o gds2vec

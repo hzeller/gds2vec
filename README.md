@@ -29,6 +29,7 @@ Usage: ./gds2vec [options] command <gdsfile>
         -h         : help
         -l <layer> : choose a specific layer
         -o <file>  : output filename (otherwise: stdout)
+        -s <scale> : output scale (default: 20000)
 ```
 
 Skywater 130 XOR gate

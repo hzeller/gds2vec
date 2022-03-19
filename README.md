@@ -27,7 +27,7 @@ Usage: ./gds2vec [options] command <gdsfile>
         desc    : print description of content
 [Options]
         -h         : help
-        -l <layer> : choose a specific layer
+        -l <layer[,layer...]> : choose layers (allowed multiple times)
         -o <file>  : output filename (otherwise: stdout)
         -s <scale> : output scale (default: 20000)
 ```

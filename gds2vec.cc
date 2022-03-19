@@ -3,10 +3,11 @@
 #include <cassert>
 #include <cstdio>
 
-#include <string>
-#include <set>
+#include <iostream>
 #include <map>
-
+#include <set>
+#include <string>
+#include <strings.h>
 #include <libGDSII.h>
 
 #include "ps-template.ps.rawstring"
@@ -23,7 +24,7 @@ static int usage(const char *progname) {
           "\tdesc    : print description of content\n"
           "[Options]\n"
           "\t-h         : help\n"
-          "\t-l <layer> : choose a specific layer (allowed multiple times)\n"
+          "\t-l <layer[,layer...]> : choose layers (allowed multiple times)\n"
           "\t-o <file>  : output filename (otherwise: stdout)\n"
           "\t-s <scale> : output scale (default: 20000)\n",
           progname);
@@ -118,7 +119,26 @@ void WritePostscript(FILE *out, float output_scale,
                   e->Angle,
                   e->Text->c_str());
         }
-        else if (e->Type != PATH) {
+        else if (e->Type == PATH) {
+          // A path is just a polygon around the line. We should be
+          // perpendicular to the path then create lines there. For now,
+          // just make it a very simple polygon and assume it is horizontal.
+          if (e->XY.size() != 4) {
+            std::cerr << "Oops, can't deal with multi-vertex path yet "
+                      << e->XY.size() << "\n";
+            continue;
+          }
+          const double width = e->Width * unit_factor;
+          fprintf(out, "%%%% Path of width %.2f\n", width);
+          const Point p0 = { e->XY[0] * unit_factor, e->XY[1] * unit_factor };
+          const Point p1 = { e->XY[2] * unit_factor, e->XY[3] * unit_factor };
+          fprintf(out, "%.4f %.4f moveto\n", p0.x, p0.y - width/2);
+          fprintf(out, "%.4f %.4f lineto\n", p1.x, p1.y - width/2);
+          fprintf(out, "%.4f %.4f lineto\n", p1.x, p1.y + width/2);
+          fprintf(out, "%.4f %.4f lineto\n", p0.x, p0.y + width/2);
+          fprintf(out, "closepath stroke\n");
+        }
+        else {
           // Polygon.
           bool is_first = true;
           iVec::const_iterator it = e->XY.begin();
@@ -137,6 +157,15 @@ void WritePostscript(FILE *out, float output_scale,
   }
 }
 
+static void SetAppend(const char *str, std::set<int> *out) {
+  while (str && *str) {
+    out->insert(atoi(str));
+    str = index(str, ',');
+    if (!str) break;
+    ++str;  // Place after comma.
+  }
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     return usage(argv[0]);
@@ -150,7 +179,7 @@ int main(int argc, char *argv[]) {
   while ((opt = getopt(argc, argv, "hl:o:s:")) != -1) {
     switch (opt) {
     case 'h': return usage(argv[0]);
-    case 'l': selected_layers.insert(atoi(optarg)); break;
+    case 'l': SetAppend(optarg, &selected_layers); break;
     case 'o': out = fopen(optarg, "wb"); break;
     case 's': output_scale = atof(optarg); break;
     default:

@@ -29,8 +29,28 @@ Usage: ./gds2vec [options] command <gdsfile>
         -h         : help
         -l <layer[,layer...]> : choose layers (allowed multiple times)
         -o <file>  : output filename (otherwise: stdout)
-        -s <scale> : output scale (default: 20000)
+        -s <scale> : output scale (default: 30000)
+        -t <title> : Title on base-plate
 ```
 
-Skywater 130 XOR gate
-![](img/sky-xor.png)
+```
+./gds2vec ps -t "AND Gate" /tmp/sky130_fd_sc_hd__and4_1.gds > /tmp/layers.ps
+```
+
+If you need DXF for your laser cutter, use the makefile-rule to create it:
+
+```
+make /tmp/layers-1.dxf
+```
+
+It is useful to create some cardboard templates for alignment while putting
+things together.
+
+Templates help alignment      | Separable
+------------------------------|--------------------
+![](./img/make-templates.jpg) | ![](./img/disassembled.jpg)
+
+
+With 4.7μm Banana               | See through
+--------------------------------|--------------------
+![](./img/banana-for-scale.jpg) | ![](./img/see-through.jpg)

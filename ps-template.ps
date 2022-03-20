@@ -3,6 +3,9 @@
 /mm { 72 25.4 div mul } def
 
 /font-size-micron 0.12 def
+/base-plate-extra 0.2 def
+/base-plate-label-color { 0 1 0 } def  % Text.
+/base-plate-line-color { 0 1 1 } def  % engraved line
 
 /layer-label-color { 0.8 0.8 0.8 } def
 /bounding-box-color { 0.8 0.8 0.9 } def
@@ -19,23 +22,96 @@
     stroke
 
     10 mm 20 mm translate
+
+    % Move to chip-scale
     0.001 mm display-scale mul dup scale
-    translate   % Offset from the bounding box
+    translate   % Offset from the bounding box, so start at 0,0
     /Helvetica findfont font-size-micron scalefont setfont
     0.001 setlinewidth
 } def
 
-% <x> <y> <width> <height> show-bounding-box
+% w h radius
+/rounded-corner-box {
+   3 dict begin
+   /radius exch def
+   /height exch def
+   /width exch def
+
+   currentpoint
+   stroke   % need to flush state before gsave/grestore
+   gsave
+   translate
+   0 radius add 0 moveto
+   width radius sub 0 lineto
+   width radius sub 0 radius add radius -90 0 arc
+
+   width height radius sub lineto
+   width radius sub height radius sub radius 0 90 arc
+
+   0 radius add height lineto
+   0 radius add height radius sub radius 90 180 arc
+
+   0 0 radius add lineto
+   0 radius add 0 radius add radius 180 270 arc
+   closepath stroke
+   grestore
+   end
+} def
+
+% Expected: position at origin
+% (txt) tick-height width hor-measure-line
+/hor-measure-line {
+    /width exch def
+    /tick-height exch def
+    /txt exch def
+    /txt-width txt stringwidth pop def
+    0 tick-height 2 div neg rmoveto
+    0 tick-height rlineto
+    0 tick-height 2 div neg rmoveto
+    /half-line-len width txt-width sub 2 div def
+    half-line-len 0 rlineto
+    0 font-size-micron 3 div neg rmoveto
+    base-plate-label-color setrgbcolor
+    txt show
+    base-plate-line-color setrgbcolor
+    0 font-size-micron 3 div rmoveto
+    half-line-len 0 rlineto
+    0 tick-height 2 div neg rmoveto
+    0 tick-height rlineto
+    0 tick-height 2 div neg rmoveto
+
+    stroke
+} def
+
+/ver-measure-line {
+    gsave
+    currentpoint translate
+    90 rotate
+    hor-measure-line
+    grestore
+} def
+
+% <txt> <x> <y> <width> <height> show-bounding-box
 /show-bounding-box {
     gsave
     bounding-box-color setrgbcolor
-    4 2 roll
-    moveto
-    dup neg 3 1 roll
-    0 exch rlineto
-    0 rlineto
-    0 exch rlineto
-    closepath stroke
+    /height exch def
+    /width exch def
+    /y exch def
+    /x exch def
+
+    % Adding the extra margin around the box
+    x base-plate-extra sub y base-plate-extra sub moveto
+
+    width base-plate-extra 2 mul add
+    height base-plate-extra 2 mul add
+    base-plate-extra rounded-corner-box
+
+    base-plate-label-color setrgbcolor
+    x y moveto
+    width font-size-micron 1.2 mul neg rmoveto
+    dup stringwidth pop neg 0 rmoveto  % Right align
+    show
     grestore
 } def
 

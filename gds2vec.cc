@@ -12,6 +12,7 @@
 
 #include "ps-template.ps.rawstring"
 
+static constexpr float kDefaultScale = 30000;
 static std::vector<const char *> kColors = {
     "0 0 0", "1 0 0", "0 1 0", "0 0 1", "0 1 1", "1 0 1", "1 1 0",
 };
@@ -26,8 +27,9 @@ static int usage(const char *progname) {
           "\t-h         : help\n"
           "\t-l <layer[,layer...]> : choose layers (allowed multiple times)\n"
           "\t-o <file>  : output filename (otherwise: stdout)\n"
-          "\t-s <scale> : output scale (default: 20000)\n",
-          progname);
+          "\t-s <scale> : output scale (default: %.0f)\n"
+          "\t-t <title> : Title on base-plate\n",
+          progname, kDefaultScale);
   return 1;
 }
 
@@ -54,7 +56,7 @@ void UpdateBoundindBox(const dVec &vertices, Box *bbox) {
   }
 }
 
-void WritePostscript(FILE *out, float output_scale,
+void WritePostscript(FILE *out, const char *title, float output_scale,
                      const std::set<int> selected_layers,
                      libGDSII::GDSIIData &gds) {
   // Find all data types so that we can assign colors
@@ -102,13 +104,15 @@ void WritePostscript(FILE *out, float output_scale,
     fprintf(out, "%s Layer-%d %d\n", "%%Page:", layer, page++);
     fprintf(out, "%.3f %.3f %d start-page\n", -bounding_box.p0.x,
             -bounding_box.p0.y, layer);
-    fprintf(out, "%.3f %.3f %.3f %.3f show-bounding-box\n", bounding_box.p0.x,
+    fprintf(out, "() %.3f %.3f %.3f %.3f show-bounding-box\n",
+            bounding_box.p0.x,
             bounding_box.p0.y, bounding_box.width(), bounding_box.height());
 
     // Emit the elements for this layer.
     for (const auto &s : gds.Structs) {
       for (const auto &e : s->Elements) {
         if (e->Layer != layer) continue;
+        fprintf(out, "%% datatype=%d\n", e->DataType);
         if (const char *col = datatype_color[e->DataType]; col != last_color) {
           fprintf(out, "%s setrgbcolor\n", col);
           last_color = col;
@@ -122,7 +126,8 @@ void WritePostscript(FILE *out, float output_scale,
         else if (e->Type == PATH) {
           // A path is just a polygon around the line. We should be
           // perpendicular to the path then create lines there. For now,
-          // just make it a very simple polygon and assume it is horizontal.
+          // just make it a very simple polygon and assume it is horizontal
+          // (Used in the skywater power supply rails)
           if (e->XY.size() != 4) {
             std::cerr << "Oops, can't deal with multi-vertex path yet "
                       << e->XY.size() << "\n";
@@ -155,6 +160,44 @@ void WritePostscript(FILE *out, float output_scale,
     }
     fprintf(out, "showpage\n\n");
   }
+
+  // Create the backplane
+  fprintf(out, "%s Backplane %d\n", "%%Page:", page++);
+  fprintf(out, "%.3f %.3f %d start-page\n", -bounding_box.p0.x,
+          -bounding_box.p0.y, 1000);
+  fprintf(out, "(%s @ %.0f:1 scale) %.3f %.3f %.3f %.3f show-bounding-box\n",
+          title, output_scale,
+          bounding_box.p0.x,
+          bounding_box.p0.y, bounding_box.width(), bounding_box.height());
+  fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f hor-measure-line\n",
+          bounding_box.p0.x, bounding_box.p0.y,
+          bounding_box.width() * 1000,
+          bounding_box.width() * 0.01, bounding_box.width());
+  fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f ver-measure-line\n",
+          bounding_box.p1.x, bounding_box.p0.y,
+          bounding_box.height() * 1000,
+          bounding_box.height() * 0.01, bounding_box.height());
+
+  fprintf(out, "showpage\n");
+
+  // Create a bunch of pins. Pro-tip: peel paper from Acrylic
+  // before cutting.
+  fprintf(out, "%s Pins %d\n", "%%Page:", page++);
+  fprintf(out, "%.3f %.3f %d start-page\n", -bounding_box.p0.x,
+          -bounding_box.p0.y, 1001);
+  const int pin_datatype = 44;
+  fprintf(out, "%s setrgbcolor\n", datatype_color[pin_datatype]);
+  const float pin_size = 0.17;  // Note: hardcoded for skywater observation.
+  const int grid = 8;
+  for (int x = 0; x <= grid; ++x) {
+    fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n",
+            x * pin_size, -pin_size/4, (grid + 0.5) * pin_size);
+  }
+  for (int y = 0; y <= grid; ++y) {
+    fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n",
+            -pin_size/4, y * pin_size, (grid + 0.5) * pin_size);
+  }
+  fprintf(out, "showpage\n");
 }
 
 static void SetAppend(const char *str, std::set<int> *out) {
@@ -173,15 +216,17 @@ int main(int argc, char *argv[]) {
 
   FILE *out = stdout;
   std::set<int> selected_layers;
-  float output_scale = 20000.0;
+  float output_scale = kDefaultScale;
+  const char *title = nullptr;
 
   int opt;
-  while ((opt = getopt(argc, argv, "hl:o:s:")) != -1) {
+  while ((opt = getopt(argc, argv, "hl:o:s:t:")) != -1) {
     switch (opt) {
     case 'h': return usage(argv[0]);
     case 'l': SetAppend(optarg, &selected_layers); break;
     case 'o': out = fopen(optarg, "wb"); break;
     case 's': output_scale = atof(optarg); break;
+    case 't': title = optarg; break;
     default:
       return usage(argv[0]);
     }
@@ -189,6 +234,7 @@ int main(int argc, char *argv[]) {
 
   const std::string command = argv[optind++];
   const char *gds_filename = argv[optind];
+  if (!title) title = gds_filename;
 
   libGDSII::GDSIIData gds(gds_filename);
   if (gds.ErrMsg) {
@@ -209,7 +255,7 @@ int main(int argc, char *argv[]) {
   } else if (command == "desc") {
     gds.WriteDescription();
   } else if (command == "ps") {
-    WritePostscript(out, output_scale, selected_layers, gds);
+    WritePostscript(out, title, output_scale, selected_layers, gds);
   } else {
     fprintf(stderr, "Unknown command\n");
     return usage(argv[0]);

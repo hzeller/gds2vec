@@ -1,25 +1,24 @@
+#include <strings.h>
 #include <unistd.h>
 
 #include <cassert>
 #include <cstdio>
-
 #include <iostream>
 #include <map>
 #include <set>
 #include <string>
-#include <strings.h>
 
 #include "gds-query.h"
-
 #include "ps-template.ps.rawstring"
 
 static constexpr float kDefaultScale = 30000;
 static std::vector<const char *> kColors = {
-    "0 0 0", "1 0 0", "0 1 0", "0 0 1", "0 1 1", "1 0 1", "1 1 0",
+  "0 0 0", "1 0 0", "0 1 0", "0 0 1", "0 1 1", "1 0 1", "1 1 0",
 };
 
 static int usage(const char *progname) {
-  fprintf(stderr, "Usage: %s [options] command <gdsfile>\n"
+  fprintf(stderr,
+          "Usage: %s [options] command <gdsfile>\n"
           "[Command]\n"
           "\tps      : output postscript\n"
           "\tlayers  : show available layers\n"
@@ -38,7 +37,7 @@ struct BoundingBox {
   Point p0;
   Point p1;
 
-  void Update(const vector<Point>& vertices) {
+  void Update(const vector<Point> &vertices) {
     for (const Point &point : vertices) {
       if (!initialized || point.x < p0.x) p0.x = point.x;
       if (!initialized || point.x > p1.x) p1.x = point.x;
@@ -53,10 +52,9 @@ struct BoundingBox {
 };
 
 void WritePostscript(FILE *out, const char *title, float output_scale,
-                     const std::set<int> selected_layers,
-                     const GDSQuery &gds) {
+                     const std::set<int> selected_layers, const GDSQuery &gds) {
   // Create a color mapping.
-  std::map<int, const char*> datatype_color;
+  std::map<int, const char *> datatype_color;
   size_t color = 0;
   for (int d : gds.GetDatatypes()) {
     datatype_color.insert({d, kColors[color++]});
@@ -82,7 +80,7 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
   // Postscript boilerplate.
   fwrite(kps_template_ps, sizeof(kps_template_ps) - 1, 1, out);
 
-  const int pin_datatype = 44; // hardcoded sky130 observed.
+  const int pin_datatype = 44;  // hardcoded sky130 observed.
   int pin_count = 0;
   std::set<float> observed_pin_width;
 
@@ -95,11 +93,10 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
 
     fprintf(out, "%s Layer-%d %d\n", "%%Page:", layer, page++);
     fprintf(out, "%.3f %.3f (Layer %d @ %.0f:1 scale) start-page\n",
-            -bounding_box.p0.x,
-            -bounding_box.p0.y, layer, output_scale);
+            -bounding_box.p0.x, -bounding_box.p0.y, layer, output_scale);
     fprintf(out, "() %.3f %.3f %.3f %.3f show-bounding-box\n",
-            bounding_box.p0.x,
-            bounding_box.p0.y, bounding_box.width(), bounding_box.height());
+            bounding_box.p0.x, bounding_box.p0.y, bounding_box.width(),
+            bounding_box.height());
 
     const char *last_col = nullptr;
     const auto change_color = [&](int datatype) {
@@ -112,8 +109,8 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
     for (const auto &text : gds.FindTexts(layer)) {
       fprintf(out, "%% datatype=%d\n", text.datatype);
       change_color(text.datatype);
-      fprintf(out, "%.3f %.3f %.3f (%s) center-text\n",
-              text.position.x, text.position.y, text.angle, text.text);
+      fprintf(out, "%.3f %.3f %.3f (%s) center-text\n", text.position.x,
+              text.position.y, text.angle, text.text);
     }
 
     for (const auto &polygon : gds.FindPolygons(layer)) {
@@ -139,20 +136,19 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
 
   // Create the backplane
   fprintf(out, "%s Backplane %d\n", "%%Page:", page++);
-  fprintf(out, "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) start-page\n",
+  fprintf(out,
+          "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) "
+          "start-page\n",
           -bounding_box.p0.x, -bounding_box.p0.y);
 
   fprintf(out, "(%s @ %.0f:1 scale) %.3f %.3f %.3f %.3f show-bounding-box\n",
-          title, output_scale,
-          bounding_box.p0.x,
-          bounding_box.p0.y, bounding_box.width(), bounding_box.height());
+          title, output_scale, bounding_box.p0.x, bounding_box.p0.y,
+          bounding_box.width(), bounding_box.height());
   fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f hor-measure-line\n",
-          bounding_box.p0.x, bounding_box.p0.y,
-          bounding_box.width() * 1000,
+          bounding_box.p0.x, bounding_box.p0.y, bounding_box.width() * 1000,
           bounding_box.width() * 0.01, bounding_box.width());
   fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f ver-measure-line\n",
-          bounding_box.p1.x, bounding_box.p0.y,
-          bounding_box.height() * 1000,
+          bounding_box.p1.x, bounding_box.p0.y, bounding_box.height() * 1000,
           bounding_box.height() * 0.01, bounding_box.height());
 
   fprintf(out, "showpage\n\n");
@@ -161,9 +157,10 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
     // Create a bunch of pins. Pro-tip: peel paper from Acrylic before cutting.
     fprintf(out, "%s Pins %d\n", "%%Page:", page++);
     const int grid = ceil(sqrt(2 * pin_count));
-    fprintf(out, "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "
-            "some need to be stacked. Peel before cut...) start-page\n", -bounding_box.p0.x,
-            -bounding_box.p0.y, grid*grid, pin_count);
+    fprintf(out,
+            "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "
+            "some need to be stacked. Peel before cut...) start-page\n",
+            -bounding_box.p0.x, -bounding_box.p0.y, grid * grid, pin_count);
 
     fprintf(out, "%s setrgbcolor\n", datatype_color[pin_datatype]);
     if (observed_pin_width.size() > 1) {
@@ -174,12 +171,12 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
     }
     const float pin_size = *observed_pin_width.begin();
     for (int x = 0; x <= grid; ++x) {
-      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n",
-              x * pin_size, -pin_size/4, (grid + 0.5) * pin_size);
+      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n", x * pin_size,
+              -pin_size / 4, (grid + 0.5) * pin_size);
     }
     for (int y = 0; y <= grid; ++y) {
-      fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n",
-              -pin_size/4, y * pin_size, (grid + 0.5) * pin_size);
+      fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n", -pin_size / 4,
+              y * pin_size, (grid + 0.5) * pin_size);
     }
     fprintf(out, "showpage\n");
   }
@@ -212,8 +209,7 @@ int main(int argc, char *argv[]) {
     case 'o': out = fopen(optarg, "wb"); break;
     case 's': output_scale = atof(optarg); break;
     case 't': title = optarg; break;
-    default:
-      return usage(argv[0]);
+    default: return usage(argv[0]);
     }
   }
 
@@ -227,14 +223,14 @@ int main(int argc, char *argv[]) {
   }
 
   if (command == "layers") {
-    const auto& layers = gds.GetLayers();
+    const auto &layers = gds.GetLayers();
     fprintf(out, "layer\tdatatype\tpolygons\ttexts\n");
     for (int layer : layers) {
       for (int datatype : gds.GetDatatypes(layer)) {
         const int polygon_count = gds.FindPolygons(layer, datatype).size();
         const int text_count = gds.FindTexts(layer, datatype).size();
-        fprintf(out, "%-5d\t%8d\t%8d\t%5d\n", layer, datatype,
-                polygon_count, text_count);
+        fprintf(out, "%-5d\t%8d\t%8d\t%5d\n", layer, datatype, polygon_count,
+                text_count);
       }
     }
     fprintf(stderr, "%d layers\n", (int)layers.size());

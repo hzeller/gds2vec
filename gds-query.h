@@ -1,11 +1,11 @@
 // -*- mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; -*-
 
+#include <libGDSII.h>
+
 #include <iostream>
 #include <memory>
-#include <vector>
 #include <set>
-
-#include <libGDSII.h>
+#include <vector>
 
 struct Point {
   double x = 0;
@@ -16,19 +16,19 @@ struct Point {
 // awkward interface of libgdsii.
 // Will also provide a good starting point in case we switch libs.
 class GDSQuery {
-public:
+ public:
   struct LayeredElement {
     int layer = 0;
     int datatype = 0;
   };
 
-  struct TextInfo : public LayeredElement {
+  struct TextElement : public LayeredElement {
     Point position;
     double angle;
     const char *text;
   };
 
-  struct Polygon : public LayeredElement {
+  struct PolygonElement : public LayeredElement {
     std::vector<Point> vertices;
   };
 
@@ -37,16 +37,14 @@ public:
   bool Load(const char *filename) {
     gds_.reset(new libGDSII::GDSIIData(filename));
     if (gds_->ErrMsg) {
-      fprintf(stderr, "Issue loading file %s: %s\n",
-              filename, gds_->ErrMsg->c_str());
+      fprintf(stderr, "Issue loading file %s: %s\n", filename,
+              gds_->ErrMsg->c_str());
       return false;
     }
     return true;
   }
 
-  void PrintDescription() {
-    gds_->WriteDescription();
-  }
+  void PrintDescription() { gds_->WriteDescription(); }
 
   // Get list of all available layers.
   std::vector<int> GetLayers() const { return gds_->GetLayers(); }
@@ -62,8 +60,8 @@ public:
     return result;
   }
 
-  std::vector<TextInfo> FindTexts(int layer = -1, int datatype = -1) const {
-    std::vector<TextInfo> result;
+  std::vector<TextElement> FindTexts(int layer = -1, int datatype = -1) const {
+    std::vector<TextElement> result;
 
     const float unit_factor = gds_->FileUnits[0];  // ? Looks like right value
 
@@ -72,7 +70,7 @@ public:
         if (layer >= 0 && e->Layer != layer) continue;
         if (datatype >= 0 && e->DataType != datatype) continue;
         if (e->Text) {
-          TextInfo t;
+          TextElement t;
           t.layer = e->Layer;
           t.datatype = e->DataType;
           t.position = {e->XY[0] * unit_factor, e->XY[1] * unit_factor};
@@ -86,8 +84,9 @@ public:
   }
 
   // Return polygons for the specified layer and datatype.
-  std::vector<Polygon> FindPolygons(int layer = -1, int datatype = -1) const {
-    std::vector<Polygon> result;
+  std::vector<PolygonElement> FindPolygons(int layer = -1,
+                                           int datatype = -1) const {
+    std::vector<PolygonElement> result;
 
     const float unit_factor = gds_->FileUnits[0];  // ? Looks like right value
 
@@ -97,7 +96,9 @@ public:
       for (const auto &e : s->Elements) {
         if (layer >= 0 && e->Layer != layer) continue;
         if (datatype >= 0 && e->DataType != datatype) continue;
-        Polygon polygon;
+        if (e->Text || e->XY.size() < 3) continue;  // just a single point.
+
+        PolygonElement polygon;
         polygon.layer = e->Layer;
         polygon.datatype = e->DataType;
 
@@ -113,16 +114,15 @@ public:
           }
 
           const double width = e->Width * unit_factor;
-          const Point p0 = { e->XY[0] * unit_factor, e->XY[1] * unit_factor };
-          const Point p1 = { e->XY[2] * unit_factor, e->XY[3] * unit_factor };
-          polygon.vertices.push_back({p0.x, p0.y - width/2});
-          polygon.vertices.push_back({p1.x, p1.y - width/2});
-          polygon.vertices.push_back({p1.x, p1.y + width/2});
-          polygon.vertices.push_back({p0.x, p0.y + width/2});
+          const Point p0 = {e->XY[0] * unit_factor, e->XY[1] * unit_factor};
+          const Point p1 = {e->XY[2] * unit_factor, e->XY[3] * unit_factor};
+          polygon.vertices.push_back({p0.x, p0.y - width / 2});
+          polygon.vertices.push_back({p1.x, p1.y - width / 2});
+          polygon.vertices.push_back({p1.x, p1.y + width / 2});
+          polygon.vertices.push_back({p0.x, p0.y + width / 2});
 
           result.push_back(polygon);
-        }
-        else {
+        } else {
           iVec::const_iterator it = e->XY.begin();
           while (it != e->XY.end()) {
             Point p;
@@ -137,6 +137,6 @@ public:
     return result;
   }
 
-private:
+ private:
   std::unique_ptr<libGDSII::GDSIIData> gds_;
 };

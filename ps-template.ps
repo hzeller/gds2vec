@@ -10,15 +10,11 @@
 /layer-label-color { 0.8 0.8 0.8 } def
 /bounding-box-color { 0.8 0.8 0.9 } def
 
-% <offset-x> <offset-y> <layer> start-page
+% <offset-x> <offset-y> (header-text) start-page
 /start-page {
-    /Helvetica findfont 3 mm scalefont setfont
+    /Helvetica findfont 2.2 mm scalefont setfont
     layer-label-color setrgbcolor
-    10 mm 5 mm moveto (Layer ) show
-    (    ) cvs show
-    (  @  ) show
-    display-scale (          ) cvs show
-    (:1 scale) show
+    10 mm 5 mm moveto show
     stroke
 
     10 mm 20 mm translate
@@ -109,8 +105,8 @@
 
     base-plate-label-color setrgbcolor
     x y moveto
-    width font-size-micron 1.2 mul neg rmoveto
-    dup stringwidth pop neg 0 rmoveto  % Right align
+    0 font-size-micron 1.2 mul neg rmoveto
+    % dup stringwidth pop neg 0 rmoveto  % Right align
     show
     grestore
 } def

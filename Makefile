@@ -1,9 +1,9 @@
-CXXFLAGS=-W -Wall -Wextra
+CXXFLAGS=-W -Wall -Wextra -std=c++17
 
 gds2vec: gds2vec.o
 	$(CXX) -o $@ $^ -lGDSII
 
-gds2vec.o : ps-template.ps.rawstring
+gds2vec.o : ps-template.ps.rawstring gds-query.h
 
 %.rawstring : %
 	echo "static constexpr char k$$(echo $^ | sed 's/[\.-]/_/g')[] = R\"(" > $@

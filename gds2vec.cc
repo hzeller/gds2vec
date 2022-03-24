@@ -8,7 +8,8 @@
 #include <set>
 #include <string>
 #include <strings.h>
-#include <libGDSII.h>
+
+#include "gds-query.h"
 
 #include "ps-template.ps.rawstring"
 
@@ -33,50 +34,39 @@ static int usage(const char *progname) {
   return 1;
 }
 
-struct Point {
-  float x = 0;
-  float y = 0;
-};
-struct Box {
+struct BoundingBox {
   Point p0;
   Point p1;
+
+  void Update(const vector<Point>& vertices) {
+    for (const Point &point : vertices) {
+      if (!initialized || point.x < p0.x) p0.x = point.x;
+      if (!initialized || point.x > p1.x) p1.x = point.x;
+      if (!initialized || point.y < p0.y) p0.y = point.y;
+      if (!initialized || point.y > p1.y) p1.y = point.y;
+      initialized = true;
+    }
+  }
   float width() const { return p1.x - p0.x; }
   float height() const { return p1.y - p0.y; }
+  bool initialized = false;
 };
-
-void UpdateBoundindBox(const dVec &vertices, Box *bbox) {
-  dVec::const_iterator it = vertices.begin();
-  while (it != vertices.end()) {
-    double x = *it++;
-    double y = *it++;
-    if (x < bbox->p0.x) bbox->p0.x = x;
-    if (x > bbox->p1.x) bbox->p1.x = x;
-    if (y < bbox->p0.y) bbox->p0.y = y;
-    if (y > bbox->p1.y) bbox->p1.y = y;
-  }
-}
 
 void WritePostscript(FILE *out, const char *title, float output_scale,
                      const std::set<int> selected_layers,
-                     libGDSII::GDSIIData &gds) {
-  // Find all data types so that we can assign colors
+                     const GDSQuery &gds) {
+  // Create a color mapping.
   std::map<int, const char*> datatype_color;
-  for (const auto &s : gds.Structs) {
-    for (const auto &e : s->Elements) {
-      datatype_color.insert({e->DataType, nullptr});
-    }
-  }
   size_t color = 0;
-  for (auto &dc : datatype_color) {
-    dc.second = kColors[color++];
+  for (int d : gds.GetDatatypes()) {
+    datatype_color.insert({d, kColors[color++]});
     if (color >= kColors.size()) color = 0;
   }
 
-
   // Determine bounding box and start page.
-  Box bounding_box;
-  for (const dVec &vertices : gds.GetPolygons()) {
-    UpdateBoundindBox(vertices, &bounding_box);
+  BoundingBox bounding_box;
+  for (const auto &polygon : gds.FindPolygons()) {
+    bounding_box.Update(polygon.vertices);
   }
   const float mm_points = 72 / 25.4;
   const float factor = output_scale * 0.001 / 25.4 * 72;
@@ -92,7 +82,10 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
   // Postscript boilerplate.
   fwrite(kps_template_ps, sizeof(kps_template_ps) - 1, 1, out);
 
-  const float unit_factor = gds.FileUnits[0];  // ? Looks like the right value
+  const int pin_datatype = 44; // hardcoded sky130 observed.
+  int pin_count = 0;
+  std::set<float> observed_pin_width;
+
   int page = 0;
   for (const int layer : gds.GetLayers()) {
     if (!selected_layers.empty() &&
@@ -100,71 +93,55 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
       continue;
     }
 
-    const char *last_color = nullptr;
     fprintf(out, "%s Layer-%d %d\n", "%%Page:", layer, page++);
-    fprintf(out, "%.3f %.3f %d start-page\n", -bounding_box.p0.x,
-            -bounding_box.p0.y, layer);
+    fprintf(out, "%.3f %.3f (Layer %d @ %.0f:1 scale) start-page\n",
+            -bounding_box.p0.x,
+            -bounding_box.p0.y, layer, output_scale);
     fprintf(out, "() %.3f %.3f %.3f %.3f show-bounding-box\n",
             bounding_box.p0.x,
             bounding_box.p0.y, bounding_box.width(), bounding_box.height());
 
-    // Emit the elements for this layer.
-    for (const auto &s : gds.Structs) {
-      for (const auto &e : s->Elements) {
-        if (e->Layer != layer) continue;
-        fprintf(out, "%% datatype=%d\n", e->DataType);
-        if (const char *col = datatype_color[e->DataType]; col != last_color) {
-          fprintf(out, "%s setrgbcolor\n", col);
-          last_color = col;
-        }
-        if (e->Text) {
-          fprintf(out, "%.3f %.3f %.3f (%s) center-text\n",
-                  e->XY[0] * unit_factor, e->XY[1] * unit_factor,
-                  e->Angle,
-                  e->Text->c_str());
-        }
-        else if (e->Type == PATH) {
-          // A path is just a polygon around the line. We should be
-          // perpendicular to the path then create lines there. For now,
-          // just make it a very simple polygon and assume it is horizontal
-          // (Used in the skywater power supply rails)
-          if (e->XY.size() != 4) {
-            std::cerr << "Oops, can't deal with multi-vertex path yet "
-                      << e->XY.size() << "\n";
-            continue;
-          }
-          const double width = e->Width * unit_factor;
-          fprintf(out, "%%%% Path of width %.2f\n", width);
-          const Point p0 = { e->XY[0] * unit_factor, e->XY[1] * unit_factor };
-          const Point p1 = { e->XY[2] * unit_factor, e->XY[3] * unit_factor };
-          fprintf(out, "%.4f %.4f moveto\n", p0.x, p0.y - width/2);
-          fprintf(out, "%.4f %.4f lineto\n", p1.x, p1.y - width/2);
-          fprintf(out, "%.4f %.4f lineto\n", p1.x, p1.y + width/2);
-          fprintf(out, "%.4f %.4f lineto\n", p0.x, p0.y + width/2);
-          fprintf(out, "closepath stroke\n");
-        }
-        else {
-          // Polygon.
-          bool is_first = true;
-          iVec::const_iterator it = e->XY.begin();
-          while (it != e->XY.end()) {
-            double x = *it++ * unit_factor;
-            double y = *it++ * unit_factor;
-            fprintf(out, "%.4f %.4f %s\n", x, y,
-                    is_first ? "moveto" : "lineto");
-            is_first = false;
-          }
-          fprintf(out, "closepath stroke\n\n");
-        }
+    const char *last_col = nullptr;
+    const auto change_color = [&](int datatype) {
+      if (const char *col = datatype_color[datatype]; col != last_col) {
+        fprintf(out, "%s setrgbcolor\n", col);
+        last_col = col;
       }
+    };
+
+    for (const auto &text : gds.FindTexts(layer)) {
+      fprintf(out, "%% datatype=%d\n", text.datatype);
+      change_color(text.datatype);
+      fprintf(out, "%.3f %.3f %.3f (%s) center-text\n",
+              text.position.x, text.position.y, text.angle, text.text);
     }
+
+    for (const auto &polygon : gds.FindPolygons(layer)) {
+      fprintf(out, "%% datatype=%d\n", polygon.datatype);
+      change_color(polygon.datatype);
+      if (polygon.datatype == pin_datatype) {
+        BoundingBox pin;
+        pin.Update(polygon.vertices);
+        observed_pin_width.insert(lround(1000 * pin.width()) / 1000.0);
+        ++pin_count;
+      }
+      bool is_first = true;
+      for (const Point &vertex : polygon.vertices) {
+        fprintf(out, "%.4f %.4f %s\n", vertex.x, vertex.y,
+                is_first ? "moveto" : "lineto");
+        is_first = false;
+      }
+      fprintf(out, "closepath stroke\n\n");
+    }
+
     fprintf(out, "showpage\n\n");
   }
 
   // Create the backplane
   fprintf(out, "%s Backplane %d\n", "%%Page:", page++);
-  fprintf(out, "%.3f %.3f %d start-page\n", -bounding_box.p0.x,
-          -bounding_box.p0.y, 1000);
+  fprintf(out, "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) start-page\n",
+          -bounding_box.p0.x, -bounding_box.p0.y);
+
   fprintf(out, "(%s @ %.0f:1 scale) %.3f %.3f %.3f %.3f show-bounding-box\n",
           title, output_scale,
           bounding_box.p0.x,
@@ -178,26 +155,34 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
           bounding_box.height() * 1000,
           bounding_box.height() * 0.01, bounding_box.height());
 
-  fprintf(out, "showpage\n");
+  fprintf(out, "showpage\n\n");
 
-  // Create a bunch of pins. Pro-tip: peel paper from Acrylic
-  // before cutting.
-  fprintf(out, "%s Pins %d\n", "%%Page:", page++);
-  fprintf(out, "%.3f %.3f %d start-page\n", -bounding_box.p0.x,
-          -bounding_box.p0.y, 1001);
-  const int pin_datatype = 44;
-  fprintf(out, "%s setrgbcolor\n", datatype_color[pin_datatype]);
-  const float pin_size = 0.17;  // Note: hardcoded for skywater observation.
-  const int grid = 8;
-  for (int x = 0; x <= grid; ++x) {
-    fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n",
-            x * pin_size, -pin_size/4, (grid + 0.5) * pin_size);
+  if (pin_count) {
+    // Create a bunch of pins. Pro-tip: peel paper from Acrylic before cutting.
+    fprintf(out, "%s Pins %d\n", "%%Page:", page++);
+    const int grid = ceil(sqrt(2 * pin_count));
+    fprintf(out, "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "
+            "some need to be stacked. Peel before cut...) start-page\n", -bounding_box.p0.x,
+            -bounding_box.p0.y, grid*grid, pin_count);
+
+    fprintf(out, "%s setrgbcolor\n", datatype_color[pin_datatype]);
+    if (observed_pin_width.size() > 1) {
+      fprintf(stderr, "Seen multiple sizes, just creating smallest\n");
+      for (float w : observed_pin_width) {
+        fprintf(stderr, "%.06f\n", w);
+      }
+    }
+    const float pin_size = *observed_pin_width.begin();
+    for (int x = 0; x <= grid; ++x) {
+      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n",
+              x * pin_size, -pin_size/4, (grid + 0.5) * pin_size);
+    }
+    for (int y = 0; y <= grid; ++y) {
+      fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n",
+              -pin_size/4, y * pin_size, (grid + 0.5) * pin_size);
+    }
+    fprintf(out, "showpage\n");
   }
-  for (int y = 0; y <= grid; ++y) {
-    fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n",
-            -pin_size/4, y * pin_size, (grid + 0.5) * pin_size);
-  }
-  fprintf(out, "showpage\n");
 }
 
 static void SetAppend(const char *str, std::set<int> *out) {
@@ -236,24 +221,25 @@ int main(int argc, char *argv[]) {
   const char *gds_filename = argv[optind];
   if (!title) title = gds_filename;
 
-  libGDSII::GDSIIData gds(gds_filename);
-  if (gds.ErrMsg) {
-    fprintf(stderr, "Issue loading file %s: %s\n",
-            gds_filename, gds.ErrMsg->c_str());
+  GDSQuery gds;
+  if (!gds.Load(gds_filename)) {
     return 1;
   }
 
   if (command == "layers") {
-    const iVec layers = gds.GetLayers();
-    fprintf(out, "layer\tpolygons\ttexts\n");
+    const auto& layers = gds.GetLayers();
+    fprintf(out, "layer\tdatatype\tpolygons\ttexts\n");
     for (int layer : layers) {
-      const int polygon_count = gds.GetPolygons(layer).size();
-      const int text_count = gds.GetTextStrings(layer).size();
-      fprintf(out, "%-5d\t%8d\t%5d\n", layer, polygon_count, text_count);
+      for (int datatype : gds.GetDatatypes(layer)) {
+        const int polygon_count = gds.FindPolygons(layer, datatype).size();
+        const int text_count = gds.FindTexts(layer, datatype).size();
+        fprintf(out, "%-5d\t%8d\t%8d\t%5d\n", layer, datatype,
+                polygon_count, text_count);
+      }
     }
     fprintf(stderr, "%d layers\n", (int)layers.size());
   } else if (command == "desc") {
-    gds.WriteDescription();
+    gds.PrintDescription();
   } else if (command == "ps") {
     WritePostscript(out, title, output_scale, selected_layers, gds);
   } else {

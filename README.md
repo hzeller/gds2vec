@@ -22,7 +22,8 @@ make
 ```
 Usage: ./gds2vec [options] command <gdsfile>
 [Command]
-        ps      : output postscript
+        sky130  : output laser-cut files for sky130 standard cells
+        ps      : output postscript of chosen layers
         layers  : show available layers
         desc    : print description of content
 [Options]
@@ -33,8 +34,11 @@ Usage: ./gds2vec [options] command <gdsfile>
         -t <title> : Title on base-plate
 ```
 
+The `sky130` command outputs laser cut geometry for all cardboard templates
+and acrylic cuts needed:
+
 ```
-./gds2vec ps -t "AND Gate" /tmp/sky130_fd_sc_hd__and4_1.gds > /tmp/layers.ps
+./gds2vec sky130 -t "AND Gate" /tmp/sky130_fd_sc_hd__and4_1.gds > /tmp/layers.ps
 ```
 
 If you need DXF for your laser cutter, use the makefile-rule to create it:

@@ -2,12 +2,18 @@
 
 /mm { 72 25.4 div mul } def
 
-/font-size-micron 0.12 def
+/font-size-micron 0.15 def
 /base-plate-extra 0.2 def
-/base-plate-label-color { 0 1 0 } def  % Text.
-/base-plate-line-color { 0 1 1 } def  % engraved line
 
-/layer-label-color { 0.8 0.8 0.8 } def
+/cut-color { 0 0 0 } def
+/scan-color { 0 1 0 } def
+/engrave-color { 0 1 1 } def
+/comment-color { 0.8 0.8 0.8 } def
+
+/base-plate-label-color { scan-color } def  % Text.
+/base-plate-line-color { engrave-color } def  % engraved line
+
+/layer-label-color { comment-color } def
 /bounding-box-color { 0.8 0.8 0.9 } def
 
 % <offset-x> <offset-y> (header-text) start-page
@@ -87,10 +93,10 @@
     grestore
 } def
 
-% <txt> <x> <y> <width> <height> show-bounding-box
+% <txt> <x> <y> <width> <height> <color> show-bounding-box
 /show-bounding-box {
     gsave
-    bounding-box-color setrgbcolor
+    setrgbcolor
     /height exch def
     /width exch def
     /y exch def

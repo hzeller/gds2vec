@@ -20,7 +20,8 @@ static int usage(const char *progname) {
   fprintf(stderr,
           "Usage: %s [options] command <gdsfile>\n"
           "[Command]\n"
-          "\tps      : output postscript\n"
+          "\tsky130  : output laser-cut files for sky130 standard cells\n"
+          "\tps      : output postscript of chosen layers\n"
           "\tlayers  : show available layers\n"
           "\tdesc    : print description of content\n"
           "[Options]\n"
@@ -46,10 +47,175 @@ struct BoundingBox {
       initialized = true;
     }
   }
+  std::vector<Point> vertices() const {
+    return {p0, {p1.x, p0.y}, p1, {p0.x, p1.y}};
+  }
   float width() const { return p1.x - p0.x; }
   float height() const { return p1.y - p0.y; }
   bool initialized = false;
 };
+
+void PostscriptPrintPolygon(FILE *out, const std::vector<Point> &vertices) {
+  bool is_first = true;
+  for (const Point &vertex : vertices) {
+    fprintf(out, "%.4f %.4f %s\n", vertex.x, vertex.y,
+            is_first ? "moveto" : "lineto");
+    is_first = false;
+  }
+  fprintf(out, "closepath stroke\n\n");
+}
+
+void PostscriptBackplane(FILE *out, const char *title, int page,
+                         float output_scale,
+                         const BoundingBox &bounding_box) {
+  fprintf(out, "%s Backplane %d\n", "%%Page:", page);
+  fprintf(out,
+          "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) "
+          "start-page\n",
+          -bounding_box.p0.x, -bounding_box.p0.y);
+
+  fprintf(out, "(%s @ %.0f:1 scale) %.3f %.3f %.3f %.3f cut-color show-bounding-box\n",
+          title, output_scale, bounding_box.p0.x, bounding_box.p0.y,
+          bounding_box.width(), bounding_box.height());
+  fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f hor-measure-line\n",
+          bounding_box.p0.x, bounding_box.p0.y, bounding_box.width() * 1000,
+          bounding_box.width() * 0.01, bounding_box.width());
+  fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f ver-measure-line\n",
+          bounding_box.p1.x, bounding_box.p0.y, bounding_box.height() * 1000,
+          bounding_box.height() * 0.01, bounding_box.height());
+
+  fprintf(out, "showpage\n\n");
+}
+
+// Create a printout useful to laser-cut standard cells from the Sky130 PDK.
+void Sky130LayoutCut(FILE *out, const char *title,
+                     float output_scale, const GDSQuery &gds) {
+  // Special meanings: negative layers: subtract.
+  // Datatype*1000: bounding box. So 2000 is bounding box of datatype 20.
+  struct Page {
+    enum { Cardboard, Acrylic } type;
+    const char *title;
+    std::vector<LayeredElement> elements;
+  };
+  // clang-format off
+  const Page pages[] = {
+    {Page::Cardboard, "nwell+diff",                  {{64, 20}, {65, 20}}},
+    {Page::Cardboard, "poly",                        {{66, 20}}},
+    {Page::Cardboard, "nwell,diff,poly -> LI",       {{67, 2000},{66, 44}}},
+    {Page::Cardboard, "local interconnect LI",       {{67, 20}}},
+    {Page::Cardboard, "LI -> Metal1",                {{67, 44}}},
+    {Page::Cardboard, "Metal1",                      {{68, 20}}},
+    {Page::Acrylic,   "nwell-diff [green]",          {{64, 20}, {-65, 20}}},
+    {Page::Acrylic,   "diff [lightblue]",            {{65, 20}}},
+    {Page::Acrylic,   "poly [orange]",               {{66, 20}}},
+    {Page::Acrylic,   "Local Interconnect [yellow]", {{67, 20}}},
+    // A layer that takes the LI and provides slots for pins from below.
+    {Page::Acrylic,   "LI-support [transparent]",    {{67, 2000},{66, 44}}},
+    {Page::Acrylic,   "Metal1",                      {{68, 20}}},
+  };
+  // clang-format on
+
+  const int pin_datatype = 44;  // hardcoded sky130 observed.
+  const float pin_size = 0.17;
+
+  // Determine bounding box and start page.
+  BoundingBox bounding_box;
+  for (const auto &polygon : gds.FindPolygons()) {
+    bounding_box.Update(polygon.vertices);
+  }
+  const float mm_points = 72 / 25.4;
+  const float factor = output_scale * 0.001 / 25.4 * 72;
+  fprintf(out,
+          "%%!PS-Adobe-2.0\n"
+          "%%%%BoundingBox: 0 0 %.0f %.0f\n\n",
+          bounding_box.width() * factor + 20 * mm_points,
+          bounding_box.height() * factor + 30 * mm_points);
+
+  fprintf(out, "/display-scale %.0f def  %% 1 micrometer -> %.0f mm\n",
+          output_scale, output_scale / 1000.0);
+
+  // Postscript boilerplate.
+  fwrite(kps_template_ps, sizeof(kps_template_ps) - 1, 1, out);
+
+  int page_num = 0;
+  int pin_count = 0;
+  for (const Page &page : pages) {
+    page_num++;
+    fprintf(out, "\n%s %d %d\n", "%%Page:", page_num, page_num);
+    fprintf(out, "%.3f %.3f (%s %s %.0f:1 scale) start-page\n",
+            -bounding_box.p0.x, -bounding_box.p0.y,
+            (page.type == Page::Cardboard) ? "Cardboard template" : "Acrylic",
+            page.title,
+            output_scale);
+    fprintf(out, "(%s) %.3f %.3f %.3f %.3f %s show-bounding-box\n",
+            (page.type == Page::Cardboard) ? page.title : "",
+            bounding_box.p0.x, bounding_box.p0.y, bounding_box.width(),
+            bounding_box.height(),
+            (page.type == Page::Cardboard) ? "cut-color" : "comment-color");
+    for (const LayeredElement &e : page.elements) {
+      const int layer = abs(e.layer);  // TODO: implement subtract
+
+      if (page.type == Page::Acrylic && e.datatype < 1000) {
+        fprintf(out, "scan-color setrgbcolor\n");
+        for (const auto &text : gds.FindTexts(layer)) {
+          fprintf(out, "%.3f %.3f %.3f (%s) center-text\n", text.position.x,
+                  text.position.y, text.angle, text.text);
+        }
+
+        if (e.layer > 0) {
+          fprintf(out, "engrave-color setrgbcolor\n");
+          for (const auto &polygon : gds.FindPolygons(layer, 16)) {
+            PostscriptPrintPolygon(out, polygon.vertices);
+          }
+        }
+      }
+
+      fprintf(out, "cut-color setrgbcolor\n");
+
+      if (e.datatype > 1000) {  // special polygon: the bounding box.
+        const int datatype = e.datatype / 100;
+        BoundingBox datatype_bbox;
+        for (const auto &polygon : gds.FindPolygons(layer, datatype)) {
+          datatype_bbox.Update(polygon.vertices);
+        }
+        PostscriptPrintPolygon(out, datatype_bbox.vertices());
+      } else {
+        for (const auto &polygon : gds.FindPolygons(layer, e.datatype)) {
+          fprintf(out, "%% datatype=%d\n", polygon.datatype);
+          PostscriptPrintPolygon(out, polygon.vertices);
+          if (page.type == Page::Cardboard && e.datatype == pin_datatype) {
+            ++pin_count;  // Remember for later
+          }
+        }
+      }
+    }
+    fprintf(out, "showpage\n\n");
+  }
+
+  // Create the backplane
+  PostscriptBackplane(out, title, ++page_num, output_scale, bounding_box);
+
+  if (pin_count) {
+    // Create a bunch of pins. Pro-tip: peel paper from Acrylic before cutting.
+    fprintf(out, "%s Pins %d\n", "%%Page:", ++page_num);
+    const int grid = ceil(sqrt(2 * pin_count));
+    fprintf(out,
+            "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "
+            "some need to be stacked. Peel before cut...) start-page\n",
+            -bounding_box.p0.x, -bounding_box.p0.y, grid * grid, pin_count);
+
+    fprintf(out, "cut-color setrgbcolor\n");
+    for (int x = 0; x <= grid; ++x) {
+      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n", x * pin_size,
+              -pin_size / 4, (grid + 0.5) * pin_size);
+    }
+    for (int y = 0; y <= grid; ++y) {
+      fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n", -pin_size / 4,
+              y * pin_size, (grid + 0.5) * pin_size);
+    }
+    fprintf(out, "showpage\n");
+  }
+}
 
 void WritePostscript(FILE *out, const char *title, float output_scale,
                      const std::set<int> selected_layers, const GDSQuery &gds) {
@@ -94,7 +260,7 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
     fprintf(out, "%s Layer-%d %d\n", "%%Page:", layer, page++);
     fprintf(out, "%.3f %.3f (Layer %d @ %.0f:1 scale) start-page\n",
             -bounding_box.p0.x, -bounding_box.p0.y, layer, output_scale);
-    fprintf(out, "() %.3f %.3f %.3f %.3f show-bounding-box\n",
+    fprintf(out, "() %.3f %.3f %.3f %.3f comment-color show-bounding-box\n",
             bounding_box.p0.x, bounding_box.p0.y, bounding_box.width(),
             bounding_box.height());
 
@@ -122,64 +288,13 @@ void WritePostscript(FILE *out, const char *title, float output_scale,
         observed_pin_width.insert(lround(1000 * pin.width()) / 1000.0);
         ++pin_count;
       }
-      bool is_first = true;
-      for (const Point &vertex : polygon.vertices) {
-        fprintf(out, "%.4f %.4f %s\n", vertex.x, vertex.y,
-                is_first ? "moveto" : "lineto");
-        is_first = false;
-      }
-      fprintf(out, "closepath stroke\n\n");
+      PostscriptPrintPolygon(out, polygon.vertices);
     }
 
     fprintf(out, "showpage\n\n");
   }
 
-  // Create the backplane
-  fprintf(out, "%s Backplane %d\n", "%%Page:", page++);
-  fprintf(out,
-          "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) "
-          "start-page\n",
-          -bounding_box.p0.x, -bounding_box.p0.y);
-
-  fprintf(out, "(%s @ %.0f:1 scale) %.3f %.3f %.3f %.3f show-bounding-box\n",
-          title, output_scale, bounding_box.p0.x, bounding_box.p0.y,
-          bounding_box.width(), bounding_box.height());
-  fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f hor-measure-line\n",
-          bounding_box.p0.x, bounding_box.p0.y, bounding_box.width() * 1000,
-          bounding_box.width() * 0.01, bounding_box.width());
-  fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f ver-measure-line\n",
-          bounding_box.p1.x, bounding_box.p0.y, bounding_box.height() * 1000,
-          bounding_box.height() * 0.01, bounding_box.height());
-
-  fprintf(out, "showpage\n\n");
-
-  if (pin_count) {
-    // Create a bunch of pins. Pro-tip: peel paper from Acrylic before cutting.
-    fprintf(out, "%s Pins %d\n", "%%Page:", page++);
-    const int grid = ceil(sqrt(2 * pin_count));
-    fprintf(out,
-            "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "
-            "some need to be stacked. Peel before cut...) start-page\n",
-            -bounding_box.p0.x, -bounding_box.p0.y, grid * grid, pin_count);
-
-    fprintf(out, "%s setrgbcolor\n", datatype_color[pin_datatype]);
-    if (observed_pin_width.size() > 1) {
-      fprintf(stderr, "Seen multiple sizes, just creating smallest\n");
-      for (float w : observed_pin_width) {
-        fprintf(stderr, "%.06f\n", w);
-      }
-    }
-    const float pin_size = *observed_pin_width.begin();
-    for (int x = 0; x <= grid; ++x) {
-      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n", x * pin_size,
-              -pin_size / 4, (grid + 0.5) * pin_size);
-    }
-    for (int y = 0; y <= grid; ++y) {
-      fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n", -pin_size / 4,
-              y * pin_size, (grid + 0.5) * pin_size);
-    }
-    fprintf(out, "showpage\n");
-  }
+  PostscriptBackplane(out, title, page, output_scale, bounding_box);
 }
 
 static void SetAppend(const char *str, std::set<int> *out) {
@@ -238,6 +353,8 @@ int main(int argc, char *argv[]) {
     gds.PrintDescription();
   } else if (command == "ps") {
     WritePostscript(out, title, output_scale, selected_layers, gds);
+  } else if (command == "sky130") {
+    Sky130LayoutCut(out, title, output_scale, gds);
   } else {
     fprintf(stderr, "Unknown command\n");
     return usage(argv[0]);

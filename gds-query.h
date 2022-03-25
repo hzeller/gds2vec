@@ -12,16 +12,16 @@ struct Point {
   double y = 0;
 };
 
+struct LayeredElement {
+  int layer = 0;
+  int datatype = 0;
+};
+
 // Little facade API for what we need from the GDS file to hide the slightly
 // awkward interface of libgdsii.
 // Will also provide a good starting point in case we switch libs.
 class GDSQuery {
  public:
-  struct LayeredElement {
-    int layer = 0;
-    int datatype = 0;
-  };
-
   struct TextElement : public LayeredElement {
     Point position;
     double angle;

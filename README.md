@@ -58,3 +58,7 @@ Templates help alignment      | Separable
 With 4.7μm Banana               | See through
 --------------------------------|--------------------
 ![](./img/banana-for-scale.jpg) | ![](./img/see-through.jpg)
+
+D-FlipFlop dfxtp-1               | Overview                        | See through view
+---------------------------------|---------------------------------|--------------------------
+![](./img/ff-flat-side-view.jpg) | ![](./img/ff-top-side-view.jpg) | ![](./img/ff-top-view.jpg)

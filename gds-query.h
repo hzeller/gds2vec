@@ -12,6 +12,28 @@ struct Point {
   double y = 0;
 };
 
+// Useful convenience class.
+struct BoundingBox {
+  Point p0;
+  Point p1;
+
+  void Update(const std::vector<Point> &vertices) {
+    for (const Point &point : vertices) {
+      if (!initialized || point.x < p0.x) p0.x = point.x;
+      if (!initialized || point.x > p1.x) p1.x = point.x;
+      if (!initialized || point.y < p0.y) p0.y = point.y;
+      if (!initialized || point.y > p1.y) p1.y = point.y;
+      initialized = true;
+    }
+  }
+  std::vector<Point> vertices() const {
+    return {p0, {p1.x, p0.y}, p1, {p0.x, p1.y}};
+  }
+  float width() const { return p1.x - p0.x; }
+  float height() const { return p1.y - p0.y; }
+  bool initialized = false;
+};
+
 struct LayeredElement {
   int layer = 0;
   int datatype = 0;

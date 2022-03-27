@@ -21,7 +21,7 @@ static int usage(const char *progname) {
           "Usage: %s [options] command <gdsfile>\n"
           "[Command]\n"
           "\tsky130  : output laser-cut files for sky130 standard cells\n"
-          "\tps      : output postscript of chosen layers\n"
+          "\tps      : output chosen layers (as PostScript)\n"
           "\tlayers  : show available layers\n"
           "\tdesc    : print description of content\n"
           "[Options]\n"
@@ -33,27 +33,6 @@ static int usage(const char *progname) {
           progname, kDefaultScale);
   return 1;
 }
-
-struct BoundingBox {
-  Point p0;
-  Point p1;
-
-  void Update(const vector<Point> &vertices) {
-    for (const Point &point : vertices) {
-      if (!initialized || point.x < p0.x) p0.x = point.x;
-      if (!initialized || point.x > p1.x) p1.x = point.x;
-      if (!initialized || point.y < p0.y) p0.y = point.y;
-      if (!initialized || point.y > p1.y) p1.y = point.y;
-      initialized = true;
-    }
-  }
-  std::vector<Point> vertices() const {
-    return {p0, {p1.x, p0.y}, p1, {p0.x, p1.y}};
-  }
-  float width() const { return p1.x - p0.x; }
-  float height() const { return p1.y - p0.y; }
-  bool initialized = false;
-};
 
 void PostscriptPrintPolygon(FILE *out, const std::vector<Point> &vertices) {
   bool is_first = true;

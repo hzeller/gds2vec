@@ -47,6 +47,11 @@ If you need DXF for your laser cutter, use the makefile-rule to create it:
 make /tmp/layers-1.dxf
 ```
 
+The last page creates a bunch of pins for the vias. These are cut in two
+separate DXF layers (horizontal first, followed by vertical) so that parts
+don't fall through before they are fully cut. Make sure to tell your laser
+software to cut them in that sequence.
+
 It is useful to create some cardboard templates for alignment while putting
 things together.
 

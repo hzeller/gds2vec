@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 
 #include "gds-query.h"
 #include "ps-template.ps.rawstring"
@@ -44,7 +45,7 @@ void PostscriptPrintPolygon(FILE *out, const std::vector<Point> &vertices) {
   fprintf(out, "closepath stroke\n\n");
 }
 
-void PostscriptBackplane(FILE *out, const char *title, int page,
+void PostscriptBackplane(FILE *out, std::string_view title, int page,
                          float output_scale,
                          const BoundingBox &bounding_box) {
   fprintf(out, "%s Backplane %d\n", "%%Page:", page);
@@ -53,8 +54,9 @@ void PostscriptBackplane(FILE *out, const char *title, int page,
           "start-page\n",
           -bounding_box.p0.x, -bounding_box.p0.y);
 
-  fprintf(out, "(%s @ %.0f:1 scale) %.3f %.3f %.3f %.3f cut-color show-bounding-box\n",
-          title, output_scale, bounding_box.p0.x, bounding_box.p0.y,
+  fprintf(out, "(%.*s @ %.0f:1 scale) %.3f %.3f %.3f %.3f cut-color show-bounding-box\n",
+          (int)title.length(), title.data(),
+          output_scale, bounding_box.p0.x, bounding_box.p0.y,
           bounding_box.width(), bounding_box.height());
   fprintf(out, "%.4f %.4f moveto ( %.0f nm ) %.4f %.4f hor-measure-line\n",
           bounding_box.p0.x, bounding_box.p0.y, bounding_box.width() * 1000,
@@ -67,7 +69,7 @@ void PostscriptBackplane(FILE *out, const char *title, int page,
 }
 
 // Create a printout useful to laser-cut standard cells from the Sky130 PDK.
-void Sky130LayoutCut(FILE *out, const char *title,
+void Sky130LayoutCut(FILE *out, std::string_view title,
                      float output_scale, const GDSQuery &gds) {
   // Special meanings: negative layers: subtract.
   // Datatype*1000: bounding box. So 2000 is bounding box of datatype 20.
@@ -78,17 +80,21 @@ void Sky130LayoutCut(FILE *out, const char *title,
   };
   // clang-format off
   const Page pages[] = {
+    // Glue alignment templates made in cardboard
     {Page::Cardboard, "nwell+diff",                  {{64, 20}, {65, 20}}},
     {Page::Cardboard, "poly",                        {{66, 20}}},
     {Page::Cardboard, "nwell,diff,poly -> LI",       {{67, 2000},{66, 44}}},
     {Page::Cardboard, "local interconnect LI",       {{67, 20}}},
     {Page::Cardboard, "LI -> Metal1",                {{67, 44}}},
     {Page::Cardboard, "Metal1",                      {{68, 20}}},
+
+    // The actual acrylic.
     {Page::Acrylic,   "nwell-diff [green]",          {{64, 20}, {-65, 20}}},
     {Page::Acrylic,   "diff [lightblue]",            {{65, 20}}},
     {Page::Acrylic,   "poly [orange]",               {{66, 20}}},
     {Page::Acrylic,   "Local Interconnect [yellow]", {{67, 20}}},
-    // A layer that takes the LI and provides slots for pins from below.
+
+    // A layer that takes the LI outline and provides slots for pins from below.
     {Page::Acrylic,   "LI-support [transparent]",    {{67, 2000},{66, 44}}},
     {Page::Acrylic,   "Metal1",                      {{68, 20}}},
   };
@@ -183,20 +189,25 @@ void Sky130LayoutCut(FILE *out, const char *title,
             "some need to be stacked. Peel before cut...) start-page\n",
             -bounding_box.p0.x, -bounding_box.p0.y, grid * grid, pin_count);
 
+    // First horizontal cuts, so that they don't fall through vertical grates
     fprintf(out, "cut-color setrgbcolor\n");
-    for (int x = 0; x <= grid; ++x) {
-      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n", x * pin_size,
-              -pin_size / 4, (grid + 0.5) * pin_size);
-    }
     for (int y = 0; y <= grid; ++y) {
       fprintf(out, "%.4f %.4f moveto %.4f 0 rlineto stroke\n", -pin_size / 4,
               y * pin_size, (grid + 0.5) * pin_size);
     }
+
+    // Now, next DXF layer, cut the pins free
+    fprintf(out, "cut-color2 setrgbcolor\n");
+    for (int x = 0; x <= grid; ++x) {
+      fprintf(out, "%.4f %.4f moveto 0 %.4f rlineto stroke\n", x * pin_size,
+              -pin_size / 4, (grid + 0.5) * pin_size);
+    }
+
     fprintf(out, "showpage\n");
   }
 }
 
-void WritePostscript(FILE *out, const char *title, float output_scale,
+void WritePostscript(FILE *out, std::string_view title, float output_scale,
                      const std::set<int> selected_layers, const GDSQuery &gds) {
   // Create a color mapping.
   std::map<int, const char *> datatype_color;
@@ -293,7 +304,7 @@ int main(int argc, char *argv[]) {
   FILE *out = stdout;
   std::set<int> selected_layers;
   float output_scale = kDefaultScale;
-  const char *title = nullptr;
+  std::string_view title;
 
   int opt;
   while ((opt = getopt(argc, argv, "hl:o:s:t:")) != -1) {
@@ -309,7 +320,16 @@ int main(int argc, char *argv[]) {
 
   const std::string command = argv[optind++];
   const char *gds_filename = argv[optind];
-  if (!title) title = gds_filename;
+  if (title.empty()) {
+    // Make some reasonable title string from the filename.
+    title = gds_filename;
+    if (auto slash = title.find_last_of('/'); slash != std::string::npos) {
+      title = title.substr(slash + 1);
+    }
+    if (auto dot = title.find_last_of('.'); dot != std::string::npos) {
+      title = title.substr(0, dot);
+    }
+  }
 
   GDSQuery gds;
   if (!gds.Load(gds_filename)) {

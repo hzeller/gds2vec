@@ -48,7 +48,7 @@ void PostscriptPrintPolygon(FILE *out, const std::vector<Point> &vertices) {
 void PostscriptBackplane(FILE *out, std::string_view title, int page,
                          float output_scale,
                          const BoundingBox &bounding_box) {
-  fprintf(out, "%s Backplane %d\n", "%%Page:", page);
+  fprintf(out, "%s (A:Backplane) %d\n", "%%Page:", page);
   fprintf(out,
           "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) "
           "start-page\n",
@@ -126,7 +126,9 @@ void Sky130LayoutCut(FILE *out, std::string_view title,
   int pin_count = 0;
   for (const Page &page : pages) {
     page_num++;
-    fprintf(out, "\n%s %d %d\n", "%%Page:", page_num, page_num);
+    fprintf(out, "\n%s (%s:%s) %d\n", "%%Page:",
+            (page.type == Page::Cardboard) ? "T" : "A",
+            page.title, page_num);
     fprintf(out, "%.3f %.3f (%s %s %.0f:1 scale) start-page\n",
             -bounding_box.p0.x, -bounding_box.p0.y,
             (page.type == Page::Cardboard) ? "Cardboard template" : "Acrylic",
@@ -182,7 +184,7 @@ void Sky130LayoutCut(FILE *out, std::string_view title,
 
   if (pin_count) {
     // Create a bunch of pins. Pro-tip: peel paper from Acrylic before cutting.
-    fprintf(out, "%s Pins %d\n", "%%Page:", ++page_num);
+    fprintf(out, "%s (A:Pins) %d\n", "%%Page:", ++page_num);
     const int grid = ceil(sqrt(2 * pin_count));
     fprintf(out,
             "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "

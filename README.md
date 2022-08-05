@@ -4,7 +4,7 @@ GDS2VEC
 Convert GDS to vector format for visualization and easy conversion to other
 formats.
 
-### Build
+## Build
 
 Get libgdsii library
 ```
@@ -17,7 +17,7 @@ then
 make
 ```
 
-### Use
+## Use
 
 ```
 Usage: ./gds2vec [options] command <gdsfile>
@@ -34,7 +34,7 @@ Usage: ./gds2vec [options] command <gdsfile>
         -t <title> : Title on base-plate
 ```
 
-### Acrylic cuts fabrication output
+## Fabrication output
 
 The `sky130` command outputs laser cut geometry for all cardboard templates
 and acrylic cuts needed:
@@ -49,7 +49,7 @@ If you need DXF for your laser cutter, use the makefile-rule to create it:
 make /tmp/layers-1.dxf
 ```
 
-#### Cut annotation
+### Cut annotation
 
 Colors (Layers) in the PostScript/DXF output have different meaning
 
@@ -58,17 +58,17 @@ Colors (Layers) in the PostScript/DXF output have different meaning
   * Cyan (RGB: 0, 1, 1):  line engrave on surface
   * grey (RGB: 0.8, 0.0, 0.8): comments, fabrication info on bottom.
 
-#### Materials
+### Materials
 
 For this run below, the following materials and colors were used. For
 acrylic, ~3mm thickness.
 
-##### Cardboard
+#### Cardboard
   * Cardboard or chipboard: templates to help align the acrylic pieces, and
     also not 'sticky' if hit with acrylic cement. Should be sturdy and with a
 	thickness <= acrylic thickness.
 
-##### Acrylic
+#### Acrylic
   * Transparent: for back-plane and carrier for the local
     interconnect support (which is yellow)
   * Lightblue: diffusion layer
@@ -81,7 +81,7 @@ acrylic, ~3mm thickness.
   * Smoke grey: for via 'pins'. Makes sense to also cut in double thickness
     material as some of them need to be double thickness.
 
-#### Fabrication remarks
+### Fabrication remarks
 The last page creates a bunch of pins (about 4x4mm) for the vias. These are cut in two separate DXF layers (horizontal first, followed by vertical) so that
 parts don't fall through before they are fully cut.
 Make sure to tell your laser software to cut them in that sequence (typically

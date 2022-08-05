@@ -50,7 +50,7 @@ void PostscriptBackplane(FILE *out, std::string_view title, int page,
                          const BoundingBox &bounding_box) {
   fprintf(out, "%s (A:Backplane) %d\n", "%%Page:", page);
   fprintf(out,
-          "%.3f %.3f (Backplane acrylic; also cool if engraved mirrored) "
+          "%.3f %.3f (Backplane clear acrylic; also cool if engraved mirrored) "
           "start-page\n",
           -bounding_box.p0.x, -bounding_box.p0.y);
 
@@ -96,7 +96,7 @@ void Sky130LayoutCut(FILE *out, std::string_view title,
 
     // A layer that takes the LI outline and provides slots for pins from below.
     {Page::Acrylic,   "LI-support [transparent]",    {{67, 2000},{66, 44}}},
-    {Page::Acrylic,   "Metal1",                      {{68, 20}}},
+    {Page::Acrylic,   "Metal1 [gray; but VPWR=red, VGND=blue]",  {{68, 20}}},
   };
   // clang-format on
 
@@ -187,8 +187,10 @@ void Sky130LayoutCut(FILE *out, std::string_view title,
     fprintf(out, "%s (A:Pins) %d\n", "%%Page:", ++page_num);
     const int grid = ceil(sqrt(2 * pin_count));
     fprintf(out,
-            "%.3f %.3f (%d Bulk Pins, seen %d; at least twice as many - "
-            "some need to be stacked. Peel before cut...) start-page\n",
+            "%.3f %.3f (%d Bulk Pins, seen %d; spares: least twice as many - "
+            "some need to be double high, so stack or double-high material. "
+	    "Peel before cut. Switch off cut optimization.)"
+	    "start-page\n",
             -bounding_box.p0.x, -bounding_box.p0.y, grid * grid, pin_count);
 
     // First horizontal cuts, so that they don't fall through vertical grates
@@ -357,7 +359,7 @@ int main(int argc, char *argv[]) {
   } else if (command == "sky130") {
     Sky130LayoutCut(out, title, output_scale, gds);
   } else {
-    fprintf(stderr, "Unknown command\n");
+    fprintf(stderr, "Unknown command '%s'\n", command.c_str());
     return usage(argv[0]);
   }
 

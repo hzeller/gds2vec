@@ -5,11 +5,11 @@
 /font-size-micron 0.15 def
 /base-plate-extra 0.2 def
 
-/cut-color { 0 0 0 } def
-/cut-color2 { 0 0 1 } def  % Different layer to allow different cut sequence
-/scan-color { 0 1 0 } def
-/engrave-color { 0 1 1 } def
-/comment-color { 0.8 0.8 0.8 } def
+/cut-color { 0 0 0 } def      % Standard cut. No kerf consideration needed.
+/cut-color2 { 0 0 0 } def     % Optional: layer to allow enforce cut sequence
+/scan-color { 0 1 0 } def     % scan engraving for text
+/engrave-color { 0 1 1 } def  % line engraving
+/comment-color { 0.8 0.8 0.8 } def  % Fabrication info.
 
 /base-plate-label-color { scan-color } def  % Text.
 /base-plate-line-color { engrave-color } def  % engraved line
@@ -112,7 +112,7 @@
 
     base-plate-label-color setrgbcolor
     x y moveto
-    0 font-size-micron 1.2 mul neg rmoveto
+    0 font-size-micron 1 mul neg rmoveto  % Vertical align
     % dup stringwidth pop neg 0 rmoveto  % Right align
     show
     grestore

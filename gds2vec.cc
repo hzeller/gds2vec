@@ -12,7 +12,7 @@
 #include "gds-query.h"
 #include "ps-template.ps.rawstring"
 
-static constexpr float kDefaultScale = 30000;
+static constexpr float kDefaultScale = 30000;  // 100nm -> 3mm
 static std::vector<const char *> kColors = {
   "0 0 0", "1 0 0", "0 1 0", "0 0 1", "0 1 1", "1 0 1", "1 1 0",
 };
@@ -45,6 +45,7 @@ void PostscriptPrintPolygon(FILE *out, const std::vector<Point> &vertices) {
   fprintf(out, "closepath stroke\n\n");
 }
 
+// The backplane everything is built on, e.g. transparent acrylic.
 void PostscriptBackplane(FILE *out, std::string_view title, int page,
                          float output_scale,
                          const BoundingBox &bounding_box) {
@@ -68,9 +69,11 @@ void PostscriptBackplane(FILE *out, std::string_view title, int page,
   fprintf(out, "showpage\n\n");
 }
 
-// Create a printout useful to laser-cut standard cells from the Sky130 PDK.
+// Create a printout useful to laser-cut standard cells from the Sky130 PDK,
+// using the layers and data types found in there.
 void Sky130LayoutCut(FILE *out, std::string_view title,
                      float output_scale, const GDSQuery &gds) {
+  // Acrylic (part of object) and Cardboard (used to arrange) layers.
   // Special meanings: negative layers: subtract.
   // Datatype*1000: bounding box. So 2000 is bounding box of datatype 20.
   struct Page {
@@ -100,7 +103,7 @@ void Sky130LayoutCut(FILE *out, std::string_view title,
   };
   // clang-format on
 
-  const int pin_datatype = 44;  // hardcoded sky130 observed.
+  const int pin_datatype = 44;  // hardcoded: sky130 observed for a pin/via
   const float pin_size = 0.17;
 
   // Determine bounding box and start page.
